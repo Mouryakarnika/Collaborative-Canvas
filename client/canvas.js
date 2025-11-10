@@ -212,3 +212,4 @@ function simplifyPath(points, minDist = 2) {
   }
   return out;
 }
+canvas.style.touchAction = 'none';
