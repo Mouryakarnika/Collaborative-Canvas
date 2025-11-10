@@ -14,6 +14,9 @@
 - Cursor indicators (basic)
 - Global undo/redo (operation-level)
 
+## Live Demo
+collaborative-canvas-r17drtjmv-mouryas-projects-09c0360c.vercel.app
+
 ## How to test
 - Open multiple tabs (same machine or different browsers) using the same hash (URL). Draw in one tab; strokes appear in others.
 - Press Undo in any client to undo the last global operation.
@@ -26,3 +29,5 @@
 
 ## Time spent
 Approximately: a few hours to design and implement the prototype.
+
+
