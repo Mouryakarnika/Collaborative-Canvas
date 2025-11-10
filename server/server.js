@@ -42,6 +42,18 @@ io.on('connection', socket => {
     io.to(roomId).emit('undo', { targetOpId });
   });
 
+  socket.on('redoRequest', () => {
+  const { roomId } = socket.data || {};
+  const room = rooms[roomId];
+  for (let i = room.history.length - 1; i >= 0; i--) {
+    if (room.history[i].state === 'undone') {
+      room.history[i].state = 'active';
+      io.to(roomId).emit('redoApplied', { opId: room.history[i].id });
+      break;
+    }
+  }
+});
+
   socket.on('disconnect', () => {
     const { roomId } = socket.data || {};
     if (rooms[roomId]) {

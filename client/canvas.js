@@ -14,6 +14,7 @@ resize();
 const colorEl = document.getElementById('color');
 const widthEl = document.getElementById('width');
 const undoBtn = document.getElementById('undo');
+const redoBtn = document.getElementById('redo');
 const clientsEl = document.getElementById('clients');
 
 let drawing = false;
@@ -87,6 +88,10 @@ socket.on('clients', (clients) => {
 
 undoBtn.addEventListener('click', () => {
   socket.emit('undoRequest');
+});
+
+redoBtn.addEventListener('click', () => {
+  socket.emit('redoRequest'); // tell server to redo last undone stroke
 });
 
 const remoteCursors = {};
