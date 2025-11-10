@@ -141,3 +141,14 @@ function redrawFromHistory() {
     }
   }
 }
+
+function simplifyPath(points, minDist = 2) {
+  if (!points.length) return points;
+  const out = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const dx = points[i].x - out[out.length-1].x;
+    const dy = points[i].y - out[out.length-1].y;
+    if (Math.hypot(dx, dy) >= minDist) out.push(points[i]);
+  }
+  return out;
+}
