@@ -88,3 +88,23 @@ socket.on('clients', (clients) => {
 undoBtn.addEventListener('click', () => {
   socket.emit('undoRequest');
 });
+
+const remoteCursors = {};
+socket.on('cursor', (c) => {
+  remoteCursors[c.socketId] = { x: c.x, y: c.y, ts: Date.now() };
+});
+
+function renderCursors() {
+  // optionally clear an overlay or the top of main canvas - here we will draw small circles
+  // We won't clear the main drawing; so use a second canvas for production. For now, we draw and erase quickly.
+  for (const id in remoteCursors) {
+    const cur = remoteCursors[id];
+    if (Date.now() - cur.ts > 2000) { delete remoteCursors[id]; continue; }
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.arc(cur.x, cur.y, 6, 0, Math.PI*2);
+    ctx.fill();
+  }
+  requestAnimationFrame(renderCursors);
+}
+requestAnimationFrame(renderCursors);
