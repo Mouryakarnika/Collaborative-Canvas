@@ -1,8 +1,5 @@
-(function () {
-  // --- Setup socket connection ---
+(function(){
   const socket = WS.connect(getRoomId());
-
-  // --- DOM elements ---
   const canvasEl = document.getElementById('canvas');
   const toolEl = document.getElementById('tool');
   const colorEl = document.getElementById('color');
@@ -12,102 +9,54 @@
   const usersList = document.getElementById('users');
   const roomSpan = document.getElementById('room-id');
 
-  // Display current room ID
   roomSpan.innerText = getRoomId();
 
-  // --- Fit canvas to window ---
-  function fitCanvas() {
+  // Make canvas take available space
+  function fitCanvas(){
     canvasEl.style.width = (window.innerWidth - 220) + 'px';
     canvasEl.style.height = (window.innerHeight - 110) + 'px';
   }
-  fitCanvas();
-  window.addEventListener('resize', fitCanvas);
+  fitCanvas(); window.addEventListener('resize', fitCanvas);
 
-  // --- Initialize Collaborative Canvas ---
+  // create CollabCanvas instance
   const canvas = CollabCanvas.createCanvas(canvasEl, socket);
-  canvas.setOnUsers(updateUserList);
+  canvas.setOnUsers(updateUsers);
 
-  // --- Current user tool options ---
-  let currentTool = 'brush';
-  let currentColor = '#000000';
-  let currentWidth = 4;
+  // mouse handling
+  let meta = { userId: null, tool: 'brush', color: '#000', width: 4 };
 
-  // --- UI Event Bindings ---
-  toolEl.addEventListener('change', () => {
-    currentTool = toolEl.value;
-  });
+  socket.on('me', ({ userId })=>{ meta.userId = userId; });
 
-  colorEl.addEventListener('change', () => {
-    currentColor = colorEl.value;
-  });
+  toolEl.addEventListener('change', ()=> meta.tool = toolEl.value);
+  colorEl.addEventListener('change', ()=> meta.color = colorEl.value);
+  widthEl.addEventListener('input', ()=> meta.width = parseInt(widthEl.value,10));
 
-  widthEl.addEventListener('change', () => {
-    currentWidth = parseInt(widthEl.value, 10) || 4;
-  });
+  undoBtn.addEventListener('click', ()=> canvas.undo());
+  redoBtn.addEventListener('click', ()=> canvas.redo());
 
-  undoBtn.addEventListener('click', () => {
-    canvas.undo();
-  });
+  canvasEl.addEventListener('pointerdown', (e)=>{ canvas.pointerDown(e, meta); });
+  canvasEl.addEventListener('pointermove', (e)=>{ canvas.pointerMove(e, meta); });
+  window.addEventListener('pointerup', (e)=>{ canvas.pointerUp(e); });
 
-  redoBtn.addEventListener('click', () => {
-    canvas.redo();
-  });
+  socket.on('history', ({ history })=>{ canvas.setHistory(history); });
 
-  // --- Mouse Events for Drawing ---
-  canvasEl.addEventListener('mousedown', (e) => {
-    canvas.pointerDown(e, getMeta());
-  });
-
-  canvasEl.addEventListener('mousemove', (e) => {
-    canvas.pointerMove(e, getMeta());
-  });
-
-  window.addEventListener('mouseup', (e) => {
-    canvas.pointerUp(e);
-  });
-
-  // --- Touch Events (for mobile support) ---
-  canvasEl.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    const touch = e.touches[0];
-    canvas.pointerDown(touch, getMeta());
-  });
-
-  canvasEl.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    const touch = e.touches[0];
-    canvas.pointerMove(touch, getMeta());
-  });
-
-  window.addEventListener('touchend', (e) => {
-    e.preventDefault();
-    canvas.pointerUp(e);
-  });
-
-  // --- Update Users List ---
-  function updateUserList(users) {
+  function updateUsers(users){
     usersList.innerHTML = '';
-    users.forEach((u) => {
+    for(const u of users){
       const li = document.createElement('li');
-      li.innerText = u.name || u.id;
-      li.style.color = u.color;
+      const dot = document.createElement('span'); dot.className='user-dot'; dot.style.background = u.color;
+      li.appendChild(dot);
+      li.appendChild(document.createTextNode((u.userId === meta.userId ? 'You' : ('User ' + u.userShort))));
       usersList.appendChild(li);
-    });
+    }
   }
 
-  // --- Meta Information for Each Stroke ---
-  function getMeta() {
-    return {
-      userId: socket.id,
-      tool: currentTool,
-      color: currentColor,
-      width: currentWidth,
-    };
-  }
-
-  // --- Get Room ID from URL ---
-  function getRoomId() {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('room') || 'default';
+  // small helper to get or create room id from URL hash
+  function getRoomId(){
+    const h = location.hash.slice(1);
+    if(h) return h;
+    const id = Math.random().toString(36).slice(2,8);
+    location.hash = id;
+    return id;
   }
 })();

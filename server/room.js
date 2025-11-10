@@ -33,3 +33,4 @@ class Rooms {
 }
 
 module.exports = { Rooms };
+

@@ -1,49 +1,46 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Collaborative Canvas</title>
-<link rel="stylesheet" href="style.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Collaborative Canvas</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-<div id="app">
-<header>
-<h1>Collaborative Canvas</h1>
-<div id="controls">
-<label>Tool:
-<select id="tool">
-<option value="brush">Brush</option>
-<option value="eraser">Eraser</option>
-</select>
-</label>
-<label>Color: <input id="color" type="color" value="#000000" /></label>
-<label>Width: <input id="width" type="range" min="1" max="40" value="4" /></label>
-<button id="undo">Undo</button>
-<button id="redo">Redo</button>
-</div>
-</header>
+  <div id="app">
+    <header>
+      <h1>Collaborative Canvas</h1>
+      <div id="controls">
+        <label>Tool:
+          <select id="tool">
+            <option value="brush">Brush</option>
+            <option value="eraser">Eraser</option>
+          </select>
+        </label>
+        <label>Color: <input id="color" type="color" value="#000000" /></label>
+        <label>Width: <input id="width" type="range" min="1" max="40" value="4" /></label>
+        <button id="undo">Undo</button>
+        <button id="redo">Redo</button>
+      </div>
+    </header>
 
+    <main>
+      <canvas id="canvas"></canvas>
+      <aside id="sidebar">
+        <h3>Online</h3>
+        <ul id="users"></ul>
+        <div id="status"></div>
+      </aside>
+    </main>
 
-<main>
-<canvas id="canvas"></canvas>
-<aside id="sidebar">
-<h3>Online</h3>
-<ul id="users"></ul>
-<div id="status"></div>
-</aside>
-</main>
+    <footer>
+      <div>Open multiple windows to test real-time sync. Room: <span id="room-id"></span></div>
+    </footer>
+  </div>
 
-
-<footer>
-<div>Open multiple windows to test real-time sync. Room: <span id="room-id"></span></div>
-</footer>
-</div>
-
-
-<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="websocket.js"></script>
-<script src="canvas.js"></script>
-<script src="main.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="websocket.js"></script>
+  <script src="canvas.js"></script>
+  <script src="main.js"></script>
 </body>
 </html>
