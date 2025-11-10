@@ -108,3 +108,36 @@ function renderCursors() {
   requestAnimationFrame(renderCursors);
 }
 requestAnimationFrame(renderCursors);
+
+let roomHistory = [];
+
+socket.on('roomState', (data) => {
+  roomHistory = data.history || [];
+  redrawFromHistory();
+});
+
+socket.on('strokeChunk', (op) => {
+  roomHistory.push(op);
+  // draw op chunk immediately for speed
+  const c = op.chunk;
+  for (let i = 1; i < c.path.length; i++) drawSegment(c.path[i-1], c.path[i], c.color, c.width);
+});
+
+socket.on('undoApplied', ({ opId }) => {
+  const op = roomHistory.find(o => o.id === opId);
+  if (op) op.state = 'undone';
+  redrawFromHistory();
+});
+
+function redrawFromHistory() {
+  // clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // replay active ops
+  for (const op of roomHistory) {
+    if (op.state !== 'active') continue;
+    const c = op.chunk;
+    for (let i = 1; i < c.path.length; i++) {
+      drawSegment(c.path[i-1], c.path[i], c.color, c.width);
+    }
+  }
+}
