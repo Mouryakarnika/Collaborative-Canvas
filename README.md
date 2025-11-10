@@ -1,33 +1,54 @@
-# Collaborative Canvas
+# 🎨 Collaborative Canvas
 
-## Setup
+A **real-time collaborative drawing app** where multiple users can sketch together on a shared canvas — powered by **Node.js**, **Express**, and **Socket.IO**.  
+It supports **live brush & eraser tools**, **color and width selection**, **global undo/redo**, and **cursor tracking**.
 
-1. Clone repo
-2. `npm install`
-3. `npm start`
-4. Open `http://localhost:3000/` — the app will create a room id in the URL hash. Open the same URL in multiple tabs to test.
+---
 
-## Features
-- Brush + Eraser
-- Color and stroke width controls
-- Real-time drawing via WebSockets (Socket.io)
-- Cursor indicators (basic)
-- Global undo/redo (operation-level)
+## 🚀 Live Demo
 
-## Live Demo
-collaborative-canvas-r17drtjmv-mouryas-projects-09c0360c.vercel.app
+🔗 **Try it here:**  
+👉 [https://collaborative-canvas-jyi9.onrender.com/#fkx30e](https://collaborative-canvas-jyi9.onrender.com/#fkx30e)
 
-## How to test
-- Open multiple tabs (same machine or different browsers) using the same hash (URL). Draw in one tab; strokes appear in others.
-- Press Undo in any client to undo the last global operation.
+Open the link in **two browser tabs** (or two devices) — start drawing in one and watch it appear instantly in the other!
 
-## Known limitations
-- Undo/Redo is operation-level and global; there is no per-user undo stack or selective undo.
-- Conflict resolution is naive: operations are applied in server order.
-- No authentication; user ids are socket ids.
-- Cursor indicators are transient and basic.
+---
 
-## Time spent
-Approximately: a few hours to design and implement the prototype.
+## ✨ Features
 
+| Feature | Description |
+|----------|--------------|
+| 🖌️ Brush Tool | Draw freely on the canvas |
+| 🧽 Eraser Tool | Erase strokes in real time |
+| 🎨 Color Picker | Choose custom colors |
+| 📏 Width Control | Adjust brush size dynamically |
+| ⚡ Real-Time Collaboration | See others draw instantly (via WebSockets) |
+| ↩️ Global Undo / Redo | Undo/redo across all users |
+| 🖱️ Cursor Indicators | Shows where others are drawing |
+| 🧑‍🤝‍🧑 Multi-Room Support | Each URL hash represents a separate drawing room |
 
+---
+
+## 🧩 Tech Stack
+
+**Frontend:**
+- HTML5 Canvas
+- Vanilla JavaScript (no frameworks)
+- CSS3 (responsive layout)
+
+**Backend:**
+- Node.js
+- Express.js
+- Socket.IO (for bi-directional real-time communication)
+
+**Deployment:**
+- Hosted on [Render](https://render.com)
+
+---
+
+## 🛠️ Local Setup
+
+### 1️⃣ Clone the Repository
+```bash
+git clone https://github.com/Mouryakarnika/Collaborative-Canvas.git
+cd Collaborative-Canvas
