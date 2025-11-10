@@ -1,159 +1,76 @@
-// server/server.js
+javascript
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const { Rooms } = require('./rooms');
+const { DrawingState } = require('./drawing-state');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.static(path.join(__dirname, '../client')));
+const rooms = new Rooms();
 
-// Each room holds drawing history and connected clients
-// rooms = { roomId: { history: [ops], clients: { socketId: {username, color} }, redoStack: [] } }
-const rooms = {};
+app.use(express.static(path.join(__dirname, '..', 'client')));
 
 io.on('connection', (socket) => {
-  console.log('✅ Client connected:', socket.id);
+  console.log('socket connected', socket.id);
 
-  // --- Join a drawing room ---
-  socket.on('join', ({ roomId = 'main', username = 'guest', color = '#000000' }) => {
+  socket.on('join-room', ({ roomId })=>{
     socket.join(roomId);
-    socket.data = { roomId, username, color };
+    socket.data.roomId = roomId;
+    // add user to room
+    const room = rooms.ensureRoom(roomId, io);
+    const user = room.addUser(socket.id);
 
-    // Create room if not exist
-    if (!rooms[roomId]) {
-      rooms[roomId] = { history: [], clients: {}, redoStack: [] };
-    }
+    // send user their id
+    socket.emit('me', { userId: socket.id });
 
-    // Track user in the room
-    rooms[roomId].clients[socket.id] = { username, color };
+    // send current history
+    socket.emit('history', { history: room.state.getHistory() });
 
-    // Send current state to the joining client
-    socket.emit('roomState', {
-      history: rooms[roomId].history,
-      clients: rooms[roomId].clients,
+    // broadcast users
+    io.to(roomId).emit('users', { users: room.listUsers() });
+
+    // wire user events
+    socket.on('start-stroke', ({ stroke })=>{
+      // push placeholder into history to lock ordering
+      room.state.startStroke(stroke);
+      io.to(roomId).emit('remote-start-stroke', { stroke });
     });
 
-    // Notify everyone in the room of new client list
-    io.to(roomId).emit('clients', rooms[roomId].clients);
-
-    console.log(`👤 ${username} joined room ${roomId}`);
-  });
-
-  // --- Handle stroke data from clients ---
-  socket.on('strokeChunk', (chunk) => {
-    const { roomId } = socket.data || {};
-    if (!roomId) return;
-    const room = rooms[roomId];
-    if (!room) return;
-
-    // Ensure color & width exist
-    const color = chunk.color || socket.data.color || '#000000';
-    const width = chunk.width || 3;
-
-    // Create a canonical operation
-    const op = {
-      id: `${socket.id}_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
-      socketId: socket.id,
-      chunk: { ...chunk, color, width },
-      state: 'active',
-      ts: Date.now(),
-    };
-
-    // Store operation in room history
-    room.history.push(op);
-
-    // Clear redo stack whenever new stroke is added
-    room.redoStack = [];
-
-    // Broadcast stroke to all clients (including sender)
-    io.to(roomId).emit('strokeChunk', op);
-  });
-
-  // --- Handle cursor movement ---
-  socket.on('cursor', (cursor) => {
-    const { roomId } = socket.data || {};
-    if (!roomId) return;
-    socket.to(roomId).emit('cursor', {
-      socketId: socket.id,
-      x: cursor.x,
-      y: cursor.y,
+    socket.on('stroke-points', ({ strokeId, points })=>{
+      room.state.appendPoints(strokeId, points);
+      io.to(roomId).emit('remote-stroke-points', { strokeId, points });
     });
-  });
 
-  // --- Undo ---
-  socket.on('undoRequest', ({ targetOpId } = {}) => {
-    const { roomId } = socket.data || {};
-    if (!roomId) return;
-    const room = rooms[roomId];
-    if (!room) return;
-    if (!room.redoStack) room.redoStack = [];
-
-    let removedOp = null;
-
-    // If an opId is provided, remove that op
-    if (targetOpId) {
-      const idx = room.history.findIndex((o) => o.id === targetOpId && o.state === 'active');
-      if (idx !== -1) removedOp = room.history.splice(idx, 1)[0];
-    } else {
-      // Otherwise remove last active op (LIFO)
-      for (let i = room.history.length - 1; i >= 0; i--) {
-        if (room.history[i].state === 'active') {
-          removedOp = room.history.splice(i, 1)[0];
-          break;
-        }
-      }
-    }
-
-    if (removedOp) {
-      room.redoStack.push(removedOp);
-      io.to(roomId).emit('undoApplied', { opId: removedOp.id, history: room.history });
-    }
-  });
-
-  // --- Redo ---
-  socket.on('redoRequest', () => {
-    const { roomId } = socket.data || {};
-    if (!roomId) return;
-    const room = rooms[roomId];
-    if (!room || !room.redoStack || room.redoStack.length === 0) return;
-
-    const restoredOp = room.redoStack.pop();
-    restoredOp.state = 'active';
-    room.history.push(restoredOp);
-
-    // Broadcast restored operation
-    io.to(roomId).emit('redoApplied', { op: restoredOp, history: room.history });
-  });
-
-  // --- Request full history (e.g., reconnect) ---
-  socket.on('requestFullHistory', () => {
-    const { roomId } = socket.data || {};
-    if (!roomId) return;
-    const room = rooms[roomId];
-    if (!room) return;
-
-    socket.emit('roomState', {
-      history: room.history,
-      clients: room.clients,
+    socket.on('end-stroke', ({ stroke })=>{
+      room.state.endStroke(stroke);
+      io.to(roomId).emit('remote-end-stroke', { stroke });
     });
-  });
 
-  // --- Disconnect ---
-  socket.on('disconnect', () => {
-    const { roomId } = socket.data || {};
-    if (rooms[roomId]) {
-      delete rooms[roomId].clients[socket.id];
-      io.to(roomId).emit('clients', rooms[roomId].clients);
-    }
-    console.log('❌ Client disconnected:', socket.id);
+    socket.on('cursor', ({ x, y })=>{
+      io.to(roomId).emit('cursor-update', { userId: socket.id, x, y, color: user.color });
+    });
+
+    socket.on('undo', ()=>{
+      const opId = room.state.undo();
+      if(opId) io.to(roomId).emit('op-undo', { opId });
+    });
+
+    socket.on('redo', ()=>{
+      const op = room.state.redo();
+      if(op) io.to(roomId).emit('op-redo', { op });
+    });
+
+    socket.on('disconnect', ()=>{
+      console.log('disconnect', socket.id);
+      const r = rooms.getRoom(roomId);
+      if(r){ r.removeUser(socket.id); io.to(roomId).emit('users', { users: r.listUsers() }); }
+    });
   });
 });
 
-// --- Start Server ---
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
-});
+server.listen(PORT, ()=> console.log('listening on', PORT));

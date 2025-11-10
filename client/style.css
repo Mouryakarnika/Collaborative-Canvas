@@ -1,0 +1,12 @@
+*{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial}
+body,html,#app{height:100%}
+header{display:flex;justify-content:space-between;align-items:center;padding:10px;background:#f6f7fb;border-bottom:1px solid #e1e4ee}
+#controls label{margin-right:10px}
+main{display:flex;height:calc(100% - 110px)}
+#canvas{flex:1;background:white;display:block}
+#sidebar{width:220px;border-left:1px solid #e1e4ee;padding:10px;background:#fafbfd}
+footer{height:40px;padding:6px 12px;background:#f6f7fb;border-top:1px solid #e1e4ee}
+#users li{list-style:none;padding:6px;border-radius:6px;margin-bottom:6px}
+.user-dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:middle}
+#status{margin-top:10px;font-size:13px;color:#666}
+.cursor-indicator{position:absolute;pointer-events:none;font-size:12px;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.9);border:1px solid #ddd}
