@@ -3,124 +3,33 @@ const socket = io();
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
-// Resize canvas to full screen
+const toolbar = document.getElementById('toolbar');
 function resize() {
-  canvas.width = innerWidth;
-  canvas.height = innerHeight;
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight - (toolbar ? toolbar.offsetHeight : 0);
 }
 window.addEventListener('resize', resize);
 resize();
 
-// Toolbar elements
+// toolbar elements
 const colorEl = document.getElementById('color');
 const widthEl = document.getElementById('width');
 const undoBtn = document.getElementById('undo');
 const redoBtn = document.getElementById('redo');
 const clientsEl = document.getElementById('clients');
 
-// Drawing state
 let drawing = false;
 let path = [];
 let sendBuffer = [];
 let lastSendTime = 0;
 const SEND_INTERVAL = 50;
 
-// --- Snapshot system (performance optimization) ---
-let snapshots = [];
-const SNAPSHOT_INTERVAL = 20; // take a snapshot every 20 strokes
+// Snapshotting
 let roomHistory = [];
+let snapshots = [];
+const SNAPSHOT_INTERVAL = 20;
 
-// Take a snapshot of the current canvas state
-function takeSnapshot() {
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  snapshots.push({ index: roomHistory.length, imageData });
-}
-
-// Restore from the latest snapshot (instead of redrawing everything)
-function redrawFromHistory() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Find last snapshot to speed up re-render
-  const lastSnapshot = snapshots
-    .slice()
-    .reverse()
-    .find((s) => s.index <= roomHistory.length);
-
-  if (lastSnapshot) {
-    ctx.putImageData(lastSnapshot.imageData, 0, 0);
-    const opsToReplay = roomHistory.slice(lastSnapshot.index);
-    for (const op of opsToReplay) {
-      if (op.state !== 'active') continue;
-      const c = op.chunk;
-      for (let i = 1; i < c.path.length; i++) {
-        drawSegment(c.path[i - 1], c.path[i], c.color, c.width);
-      }
-    }
-  } else {
-    // No snapshot yet — full redraw
-    for (const op of roomHistory) {
-      if (op.state !== 'active') continue;
-      const c = op.chunk;
-      for (let i = 1; i < c.path.length; i++) {
-        drawSegment(c.path[i - 1], c.path[i], c.color, c.width);
-      }
-    }
-  }
-}
-
-// --- Drawing logic ---
-canvas.addEventListener('pointerdown', (e) => {
-  drawing = true;
-  path = [{ x: e.clientX, y: e.clientY }];
-});
-
-canvas.addEventListener('pointermove', (e) => {
-  if (!drawing) return;
-  const p = { x: e.clientX, y: e.clientY };
-  path.push(p);
-
-  // Draw locally
-  const a = path[path.length - 2];
-  const b = path[path.length - 1];
-  if (a) drawSegment(a, b, colorEl.value, +widthEl.value);
-
-  // Buffer for sending
-  sendBuffer.push(p);
-  const now = Date.now();
-
-  if (now - lastSendTime > SEND_INTERVAL) {
-    socket.emit('strokeChunk', {
-      path: sendBuffer.slice(),
-      color: colorEl.value,
-      width: +widthEl.value,
-    });
-    sendBuffer = [];
-    lastSendTime = now;
-  }
-
-  // Occasionally send cursor position
-  if (now % 200 < 20) socket.emit('cursor', { x: e.clientX, y: e.clientY });
-});
-
-canvas.addEventListener('pointerup', () => {
-  drawing = false;
-  if (sendBuffer.length) {
-    socket.emit('strokeChunk', {
-      path: sendBuffer.slice(),
-      color: colorEl.value,
-      width: +widthEl.value,
-      final: true,
-    });
-    sendBuffer = [];
-  }
-
-  // Every few strokes, capture a snapshot for faster undo/redo redraws
-  if (roomHistory.length % SNAPSHOT_INTERVAL === 0 && roomHistory.length > 0) {
-    takeSnapshot();
-  }
-});
-
-// --- Drawing helper ---
+// ------------ Drawing helpers ------------
 function drawSegment(p1, p2, color, width) {
   ctx.strokeStyle = color;
   ctx.lineWidth = width;
@@ -131,63 +40,170 @@ function drawSegment(p1, p2, color, width) {
   ctx.stroke();
 }
 
-// --- Socket events ---
-socket.on('connect', () => {
-  const username = 'user-' + Math.floor(Math.random() * 1000);
-  socket.emit('join', { roomId: 'main', username, color: colorEl.value });
+// Rebuild canvas using snapshots if available
+function redrawFromHistory() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // find last snapshot with index <= roomHistory.length
+  let lastSnapshot = null;
+  for (let i = snapshots.length - 1; i >= 0; i--) {
+    if (snapshots[i].index <= roomHistory.length) {
+      lastSnapshot = snapshots[i];
+      break;
+    }
+  }
+
+  if (lastSnapshot) {
+    ctx.putImageData(lastSnapshot.imageData, 0, 0);
+    const startIndex = lastSnapshot.index;
+    const opsToReplay = roomHistory.slice(startIndex);
+    opsToReplay.forEach((op) => {
+      if (op.state !== 'active') return;
+      const c = op.chunk;
+      for (let i = 1; i < c.path.length; i++) {
+        drawSegment(c.path[i - 1], c.path[i], c.color, c.width);
+      }
+    });
+  } else {
+    // full replay
+    roomHistory.forEach((op) => {
+      if (op.state !== 'active') return;
+      const c = op.chunk;
+      for (let i = 1; i < c.path.length; i++) {
+        drawSegment(c.path[i - 1], c.path[i], c.color, c.width);
+      }
+    });
+  }
+}
+
+function takeSnapshot() {
+  try {
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    snapshots.push({ index: roomHistory.length, imageData });
+    // limit number of stored snapshots (keep last 5)
+    if (snapshots.length > 5) snapshots.shift();
+  } catch (err) {
+    // getImageData may throw if canvas is tainted; ignore snapshot in that case
+    console.warn('snapshot failed', err);
+  }
+}
+
+// ------------ Pointer events (drawing & batching) ------------
+canvas.addEventListener('pointerdown', (e) => {
+  drawing = true;
+  path = [{ x: e.clientX, y: e.clientY }];
 });
 
-// Update user list
-socket.on('clients', (clients) => {
-  clientsEl.textContent =
-    'Users: ' + Object.values(clients).map((x) => x.username).join(', ');
+canvas.addEventListener('pointermove', (e) => {
+  if (!drawing) return;
+  const p = { x: e.clientX, y: e.clientY };
+  path.push(p);
+
+  // local immediate draw
+  const a = path[path.length - 2];
+  const b = path[path.length - 1];
+  if (a) drawSegment(a, b, colorEl.value, +widthEl.value);
+
+  // buffer to send
+  sendBuffer.push(p);
+  const now = Date.now();
+  if (now - lastSendTime > SEND_INTERVAL) {
+    const buffered = sendBuffer.slice();
+    sendBuffer = [];
+    lastSendTime = now;
+    socket.emit('strokeChunk', { path: buffered, color: colorEl.value, width: +widthEl.value });
+  }
+
+  // occasionally send cursor
+  if (now % 200 < 20) socket.emit('cursor', { x: e.clientX, y: e.clientY });
 });
 
-// Receive full room state
-socket.on('roomState', (data) => {
-  roomHistory = data.history || [];
-  redrawFromHistory();
-});
+canvas.addEventListener('pointerup', () => {
+  if (!drawing) return;
+  drawing = false;
+  if (sendBuffer.length) {
+    socket.emit('strokeChunk', { path: sendBuffer.slice(), color: colorEl.value, width: +widthEl.value, final: true });
+    sendBuffer = [];
+  }
 
-// Handle incoming strokes
-socket.on('strokeChunk', (op) => {
-  roomHistory.push(op);
-  const c = op.chunk;
-  for (let i = 1; i < c.path.length; i++) {
-    drawSegment(c.path[i - 1], c.path[i], c.color, c.width);
+  // After adding op(s) on server, the roomHistory will update via server broadcasts.
+  // We can take snapshots locally based on current known history length.
+  if (roomHistory.length > 0 && roomHistory.length % SNAPSHOT_INTERVAL === 0) {
+    takeSnapshot();
   }
 });
 
-// Undo / Redo responses
-socket.on('undoApplied', ({ opId }) => {
-  const op = roomHistory.find((o) => o.id === opId);
-  if (op) op.state = 'undone';
-  redrawFromHistory();
-});
-
-socket.on('redoApplied', ({ op }) => {
-  roomHistory.push(op);
-  redrawFromHistory();
-});
-
-// --- Undo / Redo requests from toolbar ---
+// ------------ Undo / Redo UI ----------
 undoBtn.addEventListener('click', () => {
-  socket.emit('undoRequest');
+  // option: send targetOpId to undo a specific op, but default to last
+  socket.emit('undoRequest', {}); // empty => server will undo last active op
 });
 
 redoBtn.addEventListener('click', () => {
   socket.emit('redoRequest');
 });
 
-// --- Remote cursor visualization ---
+// ------------ Socket handlers ------------
+socket.on('connect', () => {
+  const username = 'user-' + Math.floor(Math.random() * 1000);
+  socket.emit('join', { roomId: 'main', username, color: colorEl.value });
+});
+
+// receive initial room state
+socket.on('roomState', (data) => {
+  roomHistory = data.history || [];
+  redrawFromHistory();
+});
+
+// Receive op broadcast (strokeChunk op)
+socket.on('strokeChunk', (op) => {
+  // op: { id, socketId, chunk: { path, color, width }, state }
+  roomHistory.push(op);
+  // draw incoming chunk immediately
+  const c = op.chunk;
+  for (let i = 1; i < c.path.length; i++) {
+    drawSegment(c.path[i - 1], c.path[i], c.color, c.width);
+  }
+  // if history length reached snapshot boundary take snapshot (optional)
+  if (roomHistory.length % SNAPSHOT_INTERVAL === 0) takeSnapshot();
+});
+
+// undo applied - server informs about op removed
+socket.on('undoApplied', ({ opId, history }) => {
+  // update local history if provided (server optionally sends updated history)
+  if (history) {
+    roomHistory = history;
+  } else {
+    const idx = roomHistory.findIndex((o) => o.id === opId);
+    if (idx !== -1) roomHistory.splice(idx, 1);
+  }
+  redrawFromHistory();
+});
+
+// redo applied - server sends the restored op
+socket.on('redoApplied', ({ op, history }) => {
+  if (history) roomHistory = history;
+  else if (op) roomHistory.push(op);
+  redrawFromHistory();
+});
+
+socket.on('clients', (clients) => {
+  if (clientsEl) clientsEl.textContent = 'Users: ' + Object.values(clients).map((c) => c.username).join(', ');
+});
+
+// cursor updates
 const remoteCursors = {};
 socket.on('cursor', (c) => {
   remoteCursors[c.socketId] = { x: c.x, y: c.y, ts: Date.now() };
 });
 
+// render cursors on top (simple approach: redraw overlay each frame)
 function renderCursors() {
+  // NOTE: this naive method paints cursors on top of canvas which may smear strokes
+  // For production, use a separate overlay canvas for cursors.
   for (const id in remoteCursors) {
     const cur = remoteCursors[id];
+    if (!cur) continue;
     if (Date.now() - cur.ts > 2000) {
       delete remoteCursors[id];
       continue;
@@ -201,15 +217,7 @@ function renderCursors() {
 }
 requestAnimationFrame(renderCursors);
 
-// --- Optional: simplify paths before sending ---
-function simplifyPath(points, minDist = 2) {
-  if (!points.length) return points;
-  const out = [points[0]];
-  for (let i = 1; i < points.length; i++) {
-    const dx = points[i].x - out[out.length - 1].x;
-    const dy = points[i].y - out[out.length - 1].y;
-    if (Math.hypot(dx, dy) >= minDist) out.push(points[i]);
-  }
-  return out;
+// optional: function to request full history from server
+function requestFullHistory() {
+  socket.emit('requestFullHistory');
 }
-canvas.style.touchAction = 'none';
